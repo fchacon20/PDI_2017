@@ -213,7 +213,8 @@ int main(){
 
         //filter HSV image between values and store filtered image to
         //threshold matrix
-
+        //Parametros para el punto rojo de los ejemplos, si se utiliza otro objeto,
+        //es necesario "perillarlos" de nuevo
         H_MIN = 139;
         H_MAX = 256;
         S_MIN = 103;
@@ -234,6 +235,9 @@ int main(){
         if(trackObjects)
             trackFilteredObject(x,y,threshold,videoFeed);
 
+        //Obtener posicion del objeto
+        cout << "Posición del objeto es (" << x << ","<< y << ")" << endl;
+
         //while(1){
             //show frames
             imshow("Threshold",threshold);
@@ -250,40 +254,4 @@ int main(){
 
     return 0;
 
-    /*cv::VideoCapture vid;
-    vid.open("/home/fchacon/video.mp4");
-
-    if(!vid.isOpened()) {
-        cerr << "Error opening input." << endl;
-        return 1;
-    }
-
-    Mat img, bin[3], hsl[3];
-    int c;
-    createTrackbars();
-
-    MatIterator_<cv::Vec3b> it, end;
-
-    for(;;){
-        vid >> img;
-        imshow("BGR", img);
-        cvtColor(img, img, COLOR_BGR2HSV);
-
-        while(1){
-            split(img, hsl);
-
-            threshold(hsl[2], bin[2], 120, 200, CV_THRESH_BINARY);
-
-            imshow("imagen", bin[2]);
-
-
-            if( (c = waitKey(10)) != -1)
-                break;
-        }
-
-        if( (c = waitKey(10)) != -1)
-            break;
-    }
-
-    return 0;*/
 }
