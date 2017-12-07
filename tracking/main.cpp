@@ -38,8 +38,6 @@ void on_trackbar( int, void* )
 }
 
 string intToString(int number){
-
-
     std::stringstream ss;
     ss << number;
     return ss.str();
@@ -147,11 +145,12 @@ void trackFilteredObject(int &x, int &y, Mat threshold, Mat &cameraFeed){
             }
             //let user know you found an object
             if(objectFound ==true){
-                putText(cameraFeed,"Tracking Object",Point(0,50),2,1,Scalar(0,255,0),2);
+                putText(cameraFeed,"Siguiendo un objeto",Point(0,50),2,1,Scalar(0,255,0),2);
                 //draw object location on screen
-                drawObject(x,y,cameraFeed);}
+                drawObject(x,y,cameraFeed);
+            }
 
-        }else putText(cameraFeed,"TOO MUCH NOISE! ADJUST FILTER",Point(0,50),1,2,Scalar(0,0,255),2);
+        }else putText(cameraFeed,"Demasiado ruido. Ajustar el filtro",Point(0,50),1,2,Scalar(0,0,255),2);
     }
 }
 
@@ -163,7 +162,14 @@ int main(){
     Mat threshold;
     Mat videoFeed;
 
-    int mov = 4;
+    //parámetro debe ser entregado por el usuario a través de la interfaz, este es en Kg.
+    float masa = 10.0;
+    float gravedad = 9.81;
+
+    ofstream myfile;
+    myfile.open("velocity.txt");
+
+    int mov = 0;
     /*
      * 0 -> Movimiento Lineal
      * 1 -> Plano Inclinado
@@ -176,6 +182,7 @@ int main(){
     int x=0, y=0;
 
     //create slider bars for HSV filtering
+    //Descomentar para calibracion
     //createTrackbars();
 
     //video capture object to acquire webcam feed
@@ -204,10 +211,18 @@ int main(){
 
     //vid.open(0);
 
-    //start an infinite loop where webcam feed is copied to cameraFeed matrix
+    float x0 = 0.0, y0 = 0.0;
+    float vx0 = 0.0, vy0 = 0.0;
+    vector<Point2f> V;
+    vector<Point2f> A;
+
+    //start an infinite loop where webcam feed is copied to videoFeed matrix
     //all of our operations will be performed within this loop
     while(1){
         vid >> videoFeed;
+
+        if (videoFeed.empty())
+                break;
 
         cvtColor(videoFeed,HSV,COLOR_BGR2HSV);
 
@@ -215,6 +230,7 @@ int main(){
         //threshold matrix
         //Parametros para el punto rojo de los ejemplos, si se utiliza otro objeto,
         //es necesario "perillarlos" de nuevo
+
         H_MIN = 139;
         H_MAX = 256;
         S_MIN = 103;
@@ -238,20 +254,47 @@ int main(){
         //Obtener posicion del objeto
         cout << "Posición del objeto es (" << x << ","<< y << ")" << endl;
 
+        V.push_back(Point2f(abs(x0 - x)*30, abs(y0 - y)*30));
+
+        //cout << "La velocidad es: (" << V.back().x << ", " << V.back().y << ")" << endl;
+
+        A.push_back(Point2f((vx0 - V.back().x)*30, (vy0 - V.back().y)*30));
+        //cout << "La aceleración es: (" << A.back().x << ", " << A.back().y << ")" << endl;
+
+        //cout << "Velocidad del objeto es (" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")" << endl;
+        //myfile << "(" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")\n";
+
+        //cout << "Aceleración del objeto es (" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")" << endl;
+
+
         //while(1){
             //show frames
-            imshow("Threshold",threshold);
-            imshow("Raw video",videoFeed);
+        imshow("Threshold",threshold);
+        imshow("Raw video",videoFeed);
             //imshow("HSV",HSV);
           //  if( (waitKey(10)) != -1)
             //    break;
         //}
+
+        x0 = (float)x;
+        y0 = (float)y;
+        vx0 = V.back().x;
+        vy0 = V.back().y;
 
         //delay 30ms so that screen can refresh.
         //image will not appear without this waitKey() command
         waitKey(30);
     }
 
+
+    //cout << A[0] << " " << A[1] << " " << A[2] << endl;
+    cout << "La magnitud de la fuerza inicial aplicada fue de " << masa*A[2] << endl;
+
+    //La aceleración debería ser constante una vez que se aplica la fuerza si es que fuera
+    //un objeto real.
+    cout << "El coeficiente de roce es " << (A[4])/gravedad << endl;
+
+    myfile.close();
     return 0;
 
 }
