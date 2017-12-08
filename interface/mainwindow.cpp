@@ -5,6 +5,9 @@
 #include <QFileDialog>
 #include <QLineEdit>
 #include <QDebug>
+#include <iostream>
+
+using namespace std;
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
