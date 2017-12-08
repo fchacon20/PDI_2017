@@ -4,6 +4,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <math.h>
 
 using namespace cv;
 using namespace std;
@@ -154,6 +155,37 @@ void trackFilteredObject(int &x, int &y, Mat threshold, Mat &cameraFeed){
     }
 }
 
+float initialVelocity(vector<Point2f> V){
+    return(sqrt(pow(V[1].x,2) + pow(V[1].y,2)));
+}
+
+Point2f getVelocity(vector<Point2f> P, float x0, float y0){
+    return(Point2f((x0 - P.back().x)*30, (y0 - P.back().y)*30));
+}
+
+
+Point2f getAcceleration(vector<Point2f> V, float vx0, float vy0){
+    return(Point2f((vx0 - V.back().x)*30, (vy0 - V.back().y)*30));
+}
+
+vector<Point2f> getAngularVelocity(vector<Point2f> tVel, float r){
+    vector<Point2f> angularVelocity;
+    for(vector<Point2f>::iterator it = tVel.begin(); it != tVel.end(); ++it){
+        angularVelocity.push_back(*it/r);
+    }
+    return(angularVelocity);
+}
+
+float getAngularAcceleration(float a ,float r){
+    float alfa = a/r;
+    return(alfa);
+}
+
+float getCentripetalAcceleration(float v, float r){
+    float acc = pow(v,2)/r;
+    return acc;
+}
+
 int main(){
 
     bool trackObjects = true;
@@ -162,14 +194,12 @@ int main(){
     Mat threshold;
     Mat videoFeed;
 
-    //parámetro debe ser entregado por el usuario a través de la interfaz, este es en Kg.
+    //Parametro debe ser entregado por el usuario a través de la interfaz, este es en Kg.
     float masa = 10.0;
     float gravedad = 9.81;
 
-    ofstream myfile;
-    myfile.open("velocity.txt");
-
-    int mov = 0;
+    //Elegido por el usuario
+    int mov = 4;
     /*
      * 0 -> Movimiento Lineal
      * 1 -> Plano Inclinado
@@ -209,12 +239,16 @@ int main(){
             break;
     }
 
-    //vid.open(0);
+    //Frecuencia para movimento pendular
+    int hz = 0;
+    int direction = 1; //parte con velocidad positiva
 
+    //Variables de movimiento
     float x0 = 0.0, y0 = 0.0;
     float vx0 = 0.0, vy0 = 0.0;
-    vector<Point2f> V;
-    vector<Point2f> A;
+    vector<Point2f> P; //Position
+    vector<Point2f> V; //Velocity
+    vector<Point2f> A; //Aceleration
 
     //start an infinite loop where webcam feed is copied to videoFeed matrix
     //all of our operations will be performed within this loop
@@ -228,9 +262,9 @@ int main(){
 
         //filter HSV image between values and store filtered image to
         //threshold matrix
+
         //Parametros para el punto rojo de los ejemplos, si se utiliza otro objeto,
         //es necesario "perillarlos" de nuevo
-
         H_MIN = 139;
         H_MAX = 256;
         S_MIN = 103;
@@ -251,21 +285,24 @@ int main(){
         if(trackObjects)
             trackFilteredObject(x,y,threshold,videoFeed);
 
-        //Obtener posicion del objeto
-        cout << "Posición del objeto es (" << x << ","<< y << ")" << endl;
+        //Vectores de movimiento
+        P.push_back(Point2f(x,y));
+        V.push_back(getVelocity(P, x0, y0));
+        A.push_back(getAcceleration(V, vx0, vy0));
 
-        V.push_back(Point2f(abs(x0 - x)*30, abs(y0 - y)*30));
+        //cout << "Posición del objeto es: " << P.back() << endl;
+        //cout << "La velocidad es: " << V.back() << endl;
+        //cout << "La aceleración es: " << A.back() << endl;
 
-        //cout << "La velocidad es: (" << V.back().x << ", " << V.back().y << ")" << endl;
-
-        A.push_back(Point2f((vx0 - V.back().x)*30, (vy0 - V.back().y)*30));
-        //cout << "La aceleración es: (" << A.back().x << ", " << A.back().y << ")" << endl;
-
-        //cout << "Velocidad del objeto es (" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")" << endl;
-        //myfile << "(" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")\n";
-
-        //cout << "Aceleración del objeto es (" << abs(x0 - x)/30 << ","<< abs(y0 - y)/30 << ")" << endl;
-
+        //Frecuencia para movimento pendular
+        if(mov == 4){
+            if((direction == 1) && (V.back().x < 0)){
+                direction = -1; //vel negativa
+            }else if((direction == -1) && (V.back().x > 0)){
+                direction = 1; //vel positiva
+                hz++;
+            }
+        }
 
         //while(1){
             //show frames
@@ -276,25 +313,27 @@ int main(){
             //    break;
         //}
 
+        //Valores guardados para siguiente iteracion
         x0 = (float)x;
         y0 = (float)y;
         vx0 = V.back().x;
         vy0 = V.back().y;
 
-        //delay 30ms so that screen can refresh.
-        //image will not appear without this waitKey() command
         waitKey(30);
     }
 
+    if(mov == 0 || mov == 1 || mov == 2){
+        //A[0] y A[1] contienen valores basura
+        cout << "La magnitud de la fuerza inicial aplicada fue de " << sqrt(pow(masa*A[2].x,2)+pow(masa*A[2].y,2)) << endl;
 
-    //cout << A[0] << " " << A[1] << " " << A[2] << endl;
-    cout << "La magnitud de la fuerza inicial aplicada fue de " << masa*A[2] << endl;
+        //La aceleración debería ser constante una vez que se aplica la fuerza si es que fuera
+        //un objeto real. Solo aplicable a movimiento lineal por el momento.
+        cout << "El coeficiente de roce es " << (sqrt(pow(A[4].x,2)+pow(A[4].y,2)))/gravedad << endl;
+    }
 
-    //La aceleración debería ser constante una vez que se aplica la fuerza si es que fuera
-    //un objeto real.
-    cout << "El coeficiente de roce es " << (A[4])/gravedad << endl;
+    if(mov == 4)
+        cout << "Dio " << hz << " vueltas " << endl;
 
-    myfile.close();
     return 0;
 
 }
