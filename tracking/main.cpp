@@ -2,6 +2,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <iostream>
+#include <algorithm>
 #include <sstream>
 #include <string>
 #include <math.h>
@@ -27,7 +28,7 @@ const string windowName3 = "After Morphological Operations";
 const string trackbarWindowName = "Trackbars";
 
 //max number of objects to be detected in frame
-const int MAX_NUM_OBJECTS=20;
+const int MAX_NUM_OBJECTS= 100;
 
 //minimum and maximum object area
 const int MIN_OBJECT_AREA = 20*20;
@@ -138,6 +139,7 @@ void trackFilteredObject(int &x, int &y, Mat threshold, Mat &cameraFeed){
                 if(area>MIN_OBJECT_AREA && area<MAX_OBJECT_AREA && area>refArea){
                     x = moment.m10/area;
                     y = moment.m01/area;
+                    //drawObject(x,y,cameraFeed);
                     objectFound = true;
                     refArea = area;
                 }else objectFound = false;
@@ -186,6 +188,56 @@ float getCentripetalAcceleration(float v, float r){
     return acc;
 }
 
+bool calibration(int &x, int &y, Mat threshold,  Mat &cameraFeed, vector<Point2f> &pos){
+    Mat temp;
+    threshold.copyTo(temp);
+    //these two vectors needed for output of findContours
+    vector< vector<Point> > contours;
+    vector<Vec4i> hierarchy;
+    //find contours of filtered image using openCV findContours function
+    findContours(temp,contours,hierarchy,CV_RETR_CCOMP,CV_CHAIN_APPROX_SIMPLE );
+    //use moments method to find our filtered object
+    double refArea = 0;
+    bool objectFound = false;
+
+    //vector<Point2f> pos;
+
+    if (hierarchy.size() > 0) {
+        int numObjects = hierarchy.size();
+        //if number of objects greater than MAX_NUM_OBJECTS we have a noisy filter
+        if(numObjects == 4){
+            for (int index = 0; index >= 0; index = hierarchy[index][0]) {
+
+                Moments moment = moments((cv::Mat)contours[index]);
+                double area = moment.m00;
+
+                //if the area is less than 20 px by 20px then it is probably just noise
+                //if the area is the same as the 3/2 of the image size, probably just a bad filter
+                //we only want the object with the largest area so we safe a reference area each
+                //iteration and compare it to the area in the next iteration.
+                //if(area>MIN_OBJECT_AREA && area<MAX_OBJECT_AREA && area>refArea){
+                    pos.push_back(Point2f(moment.m10/area, moment.m01/area));
+                    //cout << moment.m10/area << " " << moment.m01/area << endl;
+                    //objectFound = true;
+                    //refArea = area;
+                //}else objectFound = false;
+
+            }
+
+            return true;
+            //let user know you found an object
+            if(objectFound == true){
+                putText(cameraFeed,"Siguiendo un objeto",Point(0,50),2,1,Scalar(0,255,0),2);
+                //draw object location on screen
+                drawObject(x,y,cameraFeed);
+            }
+
+        }else putText(cameraFeed,"Demasiado ruido. Ajustar el filtro",Point(0,50),1,2,Scalar(0,0,255),2);
+        return false;
+    }
+}
+
+
 int main(){
 
     bool trackObjects = true;
@@ -193,13 +245,16 @@ int main(){
     Mat HSV;
     Mat threshold;
     Mat videoFeed;
+    Mat PH = Mat(3,1, CV_32FC1);
+    Mat realPoints = Mat(3,1,CV_32FC1);
+    Mat H;
 
     //Parametro debe ser entregado por el usuario a través de la interfaz, este es en Kg.
     float masa = 10.0;
     float gravedad = 9.81;
 
     //Elegido por el usuario
-    int mov = 4;
+    int mov = 5;
     /*
      * 0 -> Movimiento Lineal
      * 1 -> Plano Inclinado
@@ -210,10 +265,11 @@ int main(){
 
     //x and y values for the location of the object
     int x=0, y=0;
+    float X=0, Y=0;
 
     //create slider bars for HSV filtering
     //Descomentar para calibracion
-    //createTrackbars();
+    createTrackbars();
 
     //video capture object to acquire webcam feed
     cv::VideoCapture vid;
@@ -243,16 +299,121 @@ int main(){
     int hz = 0;
     int direction = 1; //parte con velocidad positiva
 
+    bool isCalibrated = false;
+
     //Variables de movimiento
     float x0 = 0.0, y0 = 0.0;
     float vx0 = 0.0, vy0 = 0.0;
     vector<Point2f> P; //Position
     vector<Point2f> V; //Velocity
     vector<Point2f> A; //Aceleration
+    vector<Point2f> pos;
+
+    vector<Point2f> dst;
+
+    dst.push_back(Point2f(0,0));
+    dst.push_back(Point2f(0,10));
+    dst.push_back(Point2f(10,0));
+    dst.push_back(Point2f(10,10));
 
     //start an infinite loop where webcam feed is copied to videoFeed matrix
     //all of our operations will be performed within this loop
     while(1){
+        while(!isCalibrated){
+            vid >> videoFeed;
+
+            if (videoFeed.empty())
+                    break;
+
+            cvtColor(videoFeed,HSV,COLOR_BGR2HSV);
+
+            //filter HSV image between values and store filtered image to
+            //threshold matrix
+
+            //Parametros para el punto rojo de los ejemplos, si se utiliza otro objeto,
+            //es necesario "perillarlos" de nuevo
+            H_MIN = 139;
+            H_MAX = 256;
+            S_MIN = 103;
+            S_MAX = 256;
+            V_MIN = 1;
+            V_MAX = 256;
+
+            inRange(HSV,Scalar(H_MIN,S_MIN,V_MIN),Scalar(H_MAX,S_MAX,V_MAX),threshold);
+
+            //perform morphological operations on thresholded image to eliminate noise
+            //and emphasize the filtered object(s)
+            if(useMorphOps)
+                morphOps(threshold);
+
+            //pass in thresholded frame to our object tracking function
+            //this function will return the x and y coordinates of the
+            //filtered object
+
+            isCalibrated = calibration(x,y,threshold,videoFeed, pos);
+
+            while(1){
+                //show frames
+            imshow("Threshold",threshold);
+            imshow("Raw video",videoFeed);
+                //imshow("HSV",HSV);
+                if( (waitKey(10)) != -1)
+                    break;
+            }
+            if(pos.size() != 0){
+                vector<float> posX;
+                vector<Point2f> newPos;
+
+                for (std::vector<Point2f>::iterator it = pos.begin() ; it != pos.end(); ++it){
+                    posX.push_back(it->x);
+                }
+
+                sort(posX.begin(), posX.end());
+
+                //Orden por x
+                for (std::vector<float>::iterator it2 = posX.begin() ; it2 != posX.end(); ++it2){
+                    for (std::vector<Point2f>::iterator it = pos.begin() ; it != pos.end(); ++it){
+                        if(*it2 == it->x){
+                            newPos.push_back(*it);
+                            break;
+                        }
+                    }
+                }
+
+                //Orden por y
+                if(newPos[0].y > newPos[1].y)
+                    iter_swap(newPos.begin(), newPos.begin()+1);
+                if(newPos[2].y > newPos[3].y)
+                    iter_swap(newPos.begin()+2, newPos.begin()+3);
+
+                pos = newPos;
+                /*for (std::vector<Point2f>::iterator it = pos.begin() ; it != pos.end(); ++it){
+                    cout << *it << endl;
+                }*/
+
+                H = findHomography(pos, dst);
+            }
+        }
+
+        /*PH.at<float>(0,0) = x;
+        PH.at<float>(1,0) = y;
+        PH.at<float>(2,0) = 1;*/
+
+
+        //X = realPoints.at<float>(0,0)/realPoints.at<float>(3,0);
+        //Y = realPoints.at<float>(1,0)/realPoints.at<float>(3,0);
+
+        /*cout << H.at<float>(0,0) << endl;
+        cout << H.at<float>(1,0) << endl;
+        cout << H.at<float>(2,0) << endl;*/
+
+        /*realPoints.at<float>(0,0) = 1;
+        realPoints.at<float>(1,0) = 2;
+        realPoints.at<float>(2,0) = 3;*/
+
+        //cout << realPoints.at<float>(1,0) << endl;
+        //cout << realPoints << endl;
+
         vid >> videoFeed;
 
         if (videoFeed.empty())
@@ -265,12 +426,13 @@ int main(){
 
         //Parametros para el punto rojo de los ejemplos, si se utiliza otro objeto,
         //es necesario "perillarlos" de nuevo
-        H_MIN = 139;
-        H_MAX = 256;
-        S_MIN = 103;
-        S_MAX = 256;
-        V_MIN = 1;
-        V_MAX = 256;
+        //Detectar negro
+        H_MIN = 81;
+        H_MAX = 190;
+        S_MIN = 0;
+        S_MAX = 78;
+        V_MIN = 33;
+        V_MAX = 113;
 
         inRange(HSV,Scalar(H_MIN,S_MIN,V_MIN),Scalar(H_MAX,S_MAX,V_MAX),threshold);
 
@@ -284,6 +446,13 @@ int main(){
         //filtered object
         if(trackObjects)
             trackFilteredObject(x,y,threshold,videoFeed);
+
+        X = (H.at<double>(0,0)*x + H.at<double>(0,1)*y + H.at<double>(0,2))/(H.at<double>(2,0)*x + H.at<double>(2,1)*y + H.at<double>(2,2));
+        Y = (H.at<double>(1,0)*x + H.at<double>(1,1)*y + H.at<double>(1,2))/(H.at<double>(2,0)*x + H.at<double>(2,1)*y + H.at<double>(2,2));
+
+        cout << "X: " << X << endl << "Y: " << Y << endl;
+        //cout << "H: " << endl << H << endl << "(0,0): " << H.at<double>(0,2) << endl;
+
 
         //Vectores de movimiento
         P.push_back(Point2f(x,y));
@@ -309,8 +478,8 @@ int main(){
         imshow("Threshold",threshold);
         imshow("Raw video",videoFeed);
             //imshow("HSV",HSV);
-          //  if( (waitKey(10)) != -1)
-            //    break;
+        //    if( (waitKey(10)) != -1)
+         //       break;
         //}
 
         //Valores guardados para siguiente iteracion
