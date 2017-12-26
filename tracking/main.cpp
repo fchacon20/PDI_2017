@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <math.h>
+#include <fstream>
 
 using namespace cv;
 using namespace std;
@@ -196,16 +197,18 @@ int main(){
     Mat HSV;
     Mat threshold;
     Mat videoFeed;
-    Mat PH = Mat(3,1, CV_32FC1);
-    Mat realPoints = Mat(3,1,CV_32FC1);
     Mat H;
+
+    ofstream file;
+    file.open("data.csv");
+    file << "x1,x2,v1,v2,a1,a2\n";
 
     //Parametro debe ser entregado por el usuario a través de la interfaz, este es en Kg.
     float masa = 10.0;
     float gravedad = 9.81;
 
     //Elegido por el usuario
-    int mov = 5;
+    int mov = 0;
     /*
      * 0 -> Movimiento Lineal
      * 1 -> Plano Inclinado
@@ -260,9 +263,9 @@ int main(){
     vector<Point2f> V; //Velocity
     vector<Point2f> A; //Aceleration
     vector<Point2f> pos;
-
     vector<Point2f> dst;
 
+    //Distancias reales entre puntos de calibración
     dst.push_back(Point2f(0,0));
     dst.push_back(Point2f(0,10));
     dst.push_back(Point2f(10,0));
@@ -360,6 +363,14 @@ int main(){
         V_MIN = 45;
         V_MAX = 242;
 
+        //Rojo
+        /*H_MIN = 139;
+        H_MAX = 256;
+        S_MIN = 103;
+        S_MAX = 256;
+        V_MIN = 1;
+        V_MAX = 256;*/
+
         inRange(HSV,Scalar(H_MIN,S_MIN,V_MIN),Scalar(H_MAX,S_MAX,V_MAX),threshold);
 
         if(useMorphOps)
@@ -378,9 +389,10 @@ int main(){
         V.push_back(getVelocity(P, x0, y0));
         A.push_back(getAcceleration(V, vx0, vy0));
 
-        //cout << "Posición del objeto es: " << P.back() << endl;
-        //cout << "La velocidad es: " << V.back() << endl;
-        //cout << "La aceleración es: " << A.back() << endl;
+        //Datos guardados en archivo para su procesamiento
+        file << P.back().x << "," << P.back().y << ","
+             << V.back().x << "," << V.back().x << ","
+             << A.back().x << "," << A.back().y << "\n";
 
         //Frecuencia para movimento pendular
         if(mov == 4){
@@ -416,6 +428,7 @@ int main(){
     if(mov == 4)
         cout << "Dio " << hz << " vueltas " << endl;
 
+    file.close();
     return 0;
 
 }
