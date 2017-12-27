@@ -143,7 +143,6 @@ Point2f getVelocity(vector<Point2f> P, float x0, float y0){
     return(Point2f((x0 - P.back().x)*30, (y0 - P.back().y)*30));
 }
 
-
 Point2f getAcceleration(vector<Point2f> V, float vx0, float vy0){
     return(Point2f((vx0 - V.back().x)*30, (vy0 - V.back().y)*30));
 }
@@ -166,8 +165,14 @@ float getCentripetalAcceleration(float v, float r){
     return acc;
 }
 
+float gravityValue(vector<Point2f> V){
+    //FPS: 30
+    //Cantidad de frames: 10-5+1 = 6
+    return ((V[10].y - V[5].y)*30*6);
+}
+
 //Esta función encuentra los cuatro puntos iniciales para saber la distancia real
-bool calibration(int &x, int &y, Mat threshold,  Mat &cameraFeed, vector<Point2f> &pos){
+bool calibration(Mat threshold, vector<Point2f> &pos){
     Mat temp;
     threshold.copyTo(temp);
 
@@ -208,13 +213,14 @@ int main(){
     float gravedad = 9.81;
 
     //Elegido por el usuario
-    int mov = 0;
+    int mov = 5;
     /*
      * 0 -> Movimiento Lineal
      * 1 -> Plano Inclinado
      * 2 -> Lanzamiento proyectiles
      * 3 -> Movimiento Circular
      * 4 -> Movimiento Pendular
+     * Otro valor -> Video
      */
 
     //x e y son los valores en pixeles
@@ -298,7 +304,7 @@ int main(){
             if(useMorphOps)
                 morphOps(threshold);
 
-            isCalibrated = calibration(x,y,threshold,videoFeed, pos);
+            isCalibrated = calibration(threshold, pos);
 
             //Presionar alguna tecla hasta encontrar los puntos de calibración
             while(1){
@@ -416,13 +422,30 @@ int main(){
         waitKey(30);
     }
 
+    float ang = 0;
+
+    //Obtener ángulo de inclinación
+    if(mov == 1 || mov == 2){
+        //La elección del frame 20 es arbitraria
+        ang = atan(abs(P[0].y-P[20].y)/abs(P[0].x-P[20].x));
+        cout << "El ángulo formado es " << ang << endl;
+    }
+
+    //Comprobar valor de la aceleración de gravedad
+    if (mov == 2){
+        cout << "La estimación de la aceleración de gravedad es: " << gravityValue(V) << endl;
+    }
+
     if(mov == 0 || mov == 1 || mov == 2){
         //A[0] y A[1] contienen valores basura
         cout << "La magnitud de la fuerza inicial aplicada fue de " << sqrt(pow(masa*A[2].x,2)+pow(masa*A[2].y,2)) << endl;
 
-        //La aceleración debería ser constante una vez que se aplica la fuerza si es que fuera
-        //un objeto real. Solo aplicable a movimiento lineal por el momento.
-        cout << "El coeficiente de roce es " << (sqrt(pow(A[4].x,2)+pow(A[4].y,2)))/gravedad << endl;
+        if(mov == 0 || mov == 1){
+            //La aceleración debería ser constante una vez que se aplica la fuerza si es que fuera
+            //un objeto real. Si es movimiento lineal, el ángulo será 0.
+            cout << "El coeficiente de roce es " <<
+                    ((sqrt(pow(A[4].x,2)+pow(A[4].y,2))/gravedad)+sin(ang))/cos(ang) << endl;
+        }
     }
 
     if(mov == 4)
